@@ -150,6 +150,9 @@ venv.bak/
 # examples/robotic_arm/main_subagent.py: photos/overlays/events.jsonl written per run
 examples/robotic_arm/_captures/
 
+# examples/robotic_arm2/main_subagent.py: same, for the tool-based rewrite
+examples/robotic_arm2/_captures/
+
 # Spyder project settings
 .spyderproject
 .spyproject
