@@ -399,7 +399,7 @@ class So101ArmBackend:
         if self._robot is not None:
             return self._robot
         try:
-            from lerobot.robots.so101_follower import SO101Follower, SO101FollowerConfig
+            from lerobot.robots.so_follower import SO101Follower, SO101FollowerConfig
         except ImportError as e:
             raise ImportError(f"lerobot is not installed ({e})") from e
         if self._port is None:
