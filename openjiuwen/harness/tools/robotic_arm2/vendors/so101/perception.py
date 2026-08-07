@@ -83,7 +83,7 @@ class So101Camera:
             import pyrealsense2 as rs
         except ImportError as e:
             raise ImportError(
-                f"pyrealsense2 is not installed; run `pip install 'openjiuwen[robotic-arm-so101]'` ({e})"
+                f"pyrealsense2 is not installed; run `pip install 'openjiuwen[robotic-arm-so101-rekep]'` ({e})"
             ) from e
         try:
             import cv2

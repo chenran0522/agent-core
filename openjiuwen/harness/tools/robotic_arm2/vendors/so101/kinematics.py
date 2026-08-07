@@ -191,7 +191,9 @@ class IKSolver:
         try:
             from ikpy.chain import Chain
         except ImportError as e:
-            raise ImportError(f"ikpy is not installed; run `pip install 'openjiuwen[robotic-arm-so101]'` ({e})") from e
+            raise ImportError(
+                f"ikpy is not installed; run `pip install 'openjiuwen[robotic-arm-so101-rekep]'` ({e})"
+            ) from e
         self._chain = Chain.from_urdf_file(
             urdf_path,
             base_elements=list(base_elements or _DEFAULT_BASE_ELEMENTS),
