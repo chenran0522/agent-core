@@ -35,6 +35,7 @@ from __future__ import annotations
 
 import asyncio
 import os
+import tempfile
 from datetime import datetime
 from pathlib import Path
 from typing import Any, Optional
@@ -61,6 +62,7 @@ from openjiuwen.core.common.logging import logger  # noqa: E402
 from openjiuwen.core.foundation.llm import init_model  # noqa: E402
 from openjiuwen.core.runner import Runner  # noqa: E402
 from openjiuwen.core.single_agent.schema.agent_card import AgentCard  # noqa: E402
+from openjiuwen.core.sys_operation import LocalWorkConfig, OperationMode, SysOperationCard  # noqa: E402
 from openjiuwen.harness import create_deep_agent  # noqa: E402
 from openjiuwen.harness.rails import AskUserRail, MemoryRail, SkillUseRail, configure_skill_evolution  # noqa: E402
 from openjiuwen.harness.rails.sys_operation_rail import SysOperationRail  # noqa: E402
@@ -159,6 +161,31 @@ async def main() -> None:
     if memory_rail is not None:
         rails.append(memory_rail)
 
+    # bash/powershell 工具在输出超过 max_output_chars 时，会把完整原始输出写到系统临时目录
+    # （见 openjiuwen/harness/tools/shell/{bash,powershell}/_output.py 的
+    # openjiuwen_bash_outputs / openjiuwen_powershell_outputs），这两个目录默认落在
+    # workspace 沙箱之外。这里手动构造 SysOperation，把它们加进 sandbox_root 白名单，
+    # 这样模型看到 <persisted-output> 里的文件路径后，用 read_file 追读完整内容时
+    # 不会被沙箱校验拒绝。get-or-create：sysop_id 固定，避免重复运行时报重复添加错误。
+    bash_output_dir = Path(tempfile.gettempdir()) / "openjiuwen_bash_outputs"
+    powershell_output_dir = Path(tempfile.gettempdir()) / "openjiuwen_powershell_outputs"
+    sysop_id = "ppt_agent_sysop"
+    sys_operation_obj = Runner.resource_mgr.get_sys_operation(sysop_id)
+    if sys_operation_obj is None:
+        sysop_card = SysOperationCard(
+            id=sysop_id,
+            mode=OperationMode.LOCAL,
+            work_config=LocalWorkConfig(
+                shell_allowlist=None,
+                sandbox_root=[workspace_dir, str(bash_output_dir), str(powershell_output_dir)],
+                restrict_to_sandbox=True,
+            ),
+        )
+        add_result = Runner.resource_mgr.add_sys_operation(sysop_card)
+        if add_result.is_err():
+            logger.error(f"add_sys_operation failed: {add_result.msg()}")
+        sys_operation_obj = Runner.resource_mgr.get_sys_operation(sysop_id)
+
     agent = create_deep_agent(
         model,
         card=AgentCard(name="ppt_agent", description="PPT Generation Agent"),
@@ -169,6 +196,7 @@ async def main() -> None:
         add_general_purpose_agent=not disable_subagent,
         max_iterations=max_iterations,
         workspace=Workspace(root_path=workspace_dir, language=language),
+        sys_operation=sys_operation_obj,
         language=language,
     )
 
