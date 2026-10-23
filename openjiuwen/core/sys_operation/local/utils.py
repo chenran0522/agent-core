@@ -316,7 +316,10 @@ class AsyncProcessHandler:
 
         retained = bytearray()
         truncated = False
-        while chunk := await self._process.stderr.read(self._chunk_size):
+        while True:
+            chunk = await self._process.stderr.read(self._chunk_size)
+            if not chunk:
+                break
             remaining = limit - len(retained)
             if remaining > 0:
                 retained.extend(chunk[:remaining])
@@ -348,21 +351,30 @@ class AsyncProcessHandler:
 
         self._is_executed = True
         pid = self._process.pid
+        loop = asyncio.get_running_loop()
+        deadline = loop.time() + max(grace, 0)
         stderr_task = asyncio.create_task(self._drain_background_stderr())
         self._background_tasks.add(stderr_task)
         stderr_task.add_done_callback(self._background_tasks.discard)
-        try:
-            await asyncio.wait_for(self._process.wait(), timeout=grace)
-            code = self._process.returncode
-            if code != 0:
-                stderr = await stderr_task
-                error = f"process exited early with code {code}"
-                if stderr:
-                    error = f"{error}: {stderr}"
-                return pid, error
-            return pid, None
-        except asyncio.TimeoutError:
-            return pid, None  # still running after grace period — success
+        while self._process.returncode is None:
+            remaining = deadline - loop.time()
+            if remaining <= 0:
+                return pid, None  # still running after grace period — success
+            await asyncio.sleep(min(0.05, remaining))
+
+        code = self._process.returncode
+        if code != 0:
+            # A descendant may keep the inherited stderr write end open after
+            # the direct child exits. Only wait for the grace period's remaining
+            # time, while leaving the task alive to keep draining the pipe.
+            remaining = max(0, deadline - loop.time())
+            done, _ = await asyncio.wait({stderr_task}, timeout=remaining)
+            stderr = stderr_task.result() if stderr_task in done else ""
+            error = f"process exited early with code {code}"
+            if stderr:
+                error = f"{error}: {stderr}"
+            return pid, error
+        return pid, None
 
     async def _reader(self, stream: asyncio.StreamReader, stream_type: StreamEventType):
         """Background stream reader coroutine for stdout/stderr.
